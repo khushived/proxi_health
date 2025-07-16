@@ -1,0 +1,32 @@
+/* your-health-app-frontend/src/App.css */
+
+/*
+  Add any specific styles for the App component or global overrides
+  that are not handled by Tailwind CSS classes in App.js.
+
+  For example, if you wanted a very specific background pattern
+  or complex animation not easily expressed with utility classes.
+*/
+
+/* No specific styles needed for this simple App component beyond what Tailwind provides in App.js */
+/* You can leave this file mostly empty or remove it if you are purely using Tailwind utility classes. */
+/* However, it's good practice to keep it for potential future custom styles. */
+
+/* Example of a custom style you *could* add here if needed: */
+/*
+.custom-container-shadow {
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+}
+*/
+
+/* The message-box styles are already defined in the main HTML's <style> block,
+   but if you were to move them into a separate CSS file, this would be a place for them. */
+/*
+.message-box {
+    transition: opacity 0.5s ease-in-out;
+}
+.message-box:not(.show) {
+    opacity: 0;
+    pointer-events: none;
+}
+*/

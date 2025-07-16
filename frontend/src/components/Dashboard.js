@@ -1,0 +1,1114 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { format, formatDistanceToNow } from 'date-fns';
+
+const Dashboard = ({ user, onLogout }) => {
+    const [activeTab, setActiveTab] = useState('overview');
+    const [currentLocation, setCurrentLocation] = useState(null);
+    const [googleFitData, setGoogleFitData] = useState(null);
+    const [diseaseOutbreaks, setDiseaseOutbreaks] = useState([]);
+    const [userAlerts, setUserAlerts] = useState([]);
+    const [diseasePredictions, setDiseasePredictions] = useState(null);
+    const [googleFitConnection, setGoogleFitConnection] = useState({ connected: false });
+    const [isLoading, setIsLoading] = useState(false);
+    const [message, setMessage] = useState({ text: '', type: '' });
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    const API_BASE_URL = 'http://localhost:3001/api';
+
+    // Show message function
+    const showMessage = (text, type = 'info') => {
+        setMessage({ text, type });
+        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    };
+
+    // Fetch data on component mount
+    useEffect(() => {
+        fetchInitialData();
+    }, []);
+
+    // Update current time every second
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, []);
+
+    const fetchInitialData = useCallback(async () => {
+        try {
+            await Promise.all([
+                fetchDiseaseOutbreaks(),
+                fetchUserAlerts(),
+                checkGoogleFitConnection(),
+                fetchDiseasePredictions()
+            ]);
+        } catch (error) {
+            console.error('Error fetching initial data:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchInitialData();
+    }, [fetchInitialData]);
+
+    // API functions
+    const fetchDiseaseOutbreaks = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/disease-outbreaks`);
+            if (response.ok) {
+                const data = await response.json();
+                setDiseaseOutbreaks(data);
+            }
+        } catch (error) {
+            console.error('Error fetching outbreaks:', error);
+        }
+    };
+
+    const fetchUserAlerts = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/user-alerts`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setUserAlerts(data);
+            }
+        } catch (error) {
+            console.error('Error fetching alerts:', error);
+        }
+    };
+
+    const checkGoogleFitConnection = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/google-fit/connection`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setGoogleFitConnection(data);
+            }
+        } catch (error) {
+            console.error('Error checking Google Fit connection:', error);
+        }
+    };
+
+    const fetchDiseasePredictions = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/disease-prediction`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setDiseasePredictions(data);
+            }
+        } catch (error) {
+            console.error('Error fetching predictions:', error);
+        }
+    };
+
+    // Location functions
+    const handleGetLocation = () => {
+        if (navigator.geolocation) {
+            showMessage("Getting your location...", 'info');
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const location = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                        timestamp: new Date().toISOString()
+                    };
+                    setCurrentLocation(location);
+                    showMessage("Location retrieved successfully!", 'success');
+                    checkLocationAlerts(location);
+                },
+                (error) => {
+                    console.error("Error getting location:", error);
+                    showMessage("Failed to get location. Please allow location access.", 'error');
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        } else {
+            showMessage("Geolocation is not supported by your browser.", 'error');
+        }
+    };
+
+    const checkLocationAlerts = async (location) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/health-records`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ locationData: location })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.alerts && result.alerts.length > 0) {
+                    showMessage(`Health Alert: ${result.alerts.length} disease outbreak(s) detected in your area!`, 'warning');
+                    fetchUserAlerts(); // Refresh alerts
+                }
+            }
+        } catch (error) {
+            console.error('Error checking location alerts:', error);
+        }
+    };
+
+    // Google Fit functions
+    const handleConnectGoogleFit = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/google-fit/auth`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            
+            if (response.ok) {
+                const { authUrl } = await response.json();
+                window.open(authUrl, 'google-fit-auth', 'width=500,height=600');
+                
+                // Listen for callback
+                window.addEventListener('message', async (event) => {
+                    if (event.origin !== window.location.origin) return;
+                    
+                    if (event.data.type === 'GOOGLE_FIT_CALLBACK') {
+                        const { code, state } = event.data;
+                        
+                        try {
+                            const callbackResponse = await fetch(`${API_BASE_URL}/google-fit/callback`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code, state })
+                            });
+                            
+                            if (callbackResponse.ok) {
+                                setGoogleFitConnection({ connected: true });
+                                showMessage("Google Fit connected successfully!", 'success');
+                            } else {
+                                throw new Error('Failed to connect Google Fit');
+                            }
+                        } catch (error) {
+                            showMessage("Failed to connect Google Fit", 'error');
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error connecting to Google Fit:', error);
+            showMessage("Error connecting to Google Fit", 'error');
+        }
+    };
+
+    const handleSyncGoogleFit = async () => {
+        setIsLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/google-fit/sync`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                setGoogleFitData(result.data);
+                showMessage("Google Fit data synced successfully!", 'success');
+            } else {
+                throw new Error('Failed to sync Google Fit data');
+            }
+        } catch (error) {
+            console.error('Error syncing Google Fit data:', error);
+            showMessage("Error syncing Google Fit data", 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleGeneratePredictions = async () => {
+        setIsLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/disease-prediction`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                setDiseasePredictions(result);
+                showMessage("Disease predictions generated successfully!", 'success');
+            } else {
+                throw new Error('Failed to generate predictions');
+            }
+        } catch (error) {
+            console.error('Error generating predictions:', error);
+            showMessage("Error generating predictions", 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        onLogout();
+    };
+
+    // Sample data for charts (in a real app, this would come from your API)
+    const generateWeeklyHealthData = () => {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return days.map((day, index) => ({
+            day,
+            steps: Math.floor(Math.random() * 5000) + 3000,
+            heartRate: Math.floor(Math.random() * 30) + 60,
+            calories: Math.floor(Math.random() * 500) + 1500,
+            sleep: Math.floor(Math.random() * 3) + 6
+        }));
+    };
+
+    const generateDiseaseTrendData = () => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+        return months.map((month, index) => ({
+            month,
+            dengue: Math.floor(Math.random() * 50) + 10,
+            malaria: Math.floor(Math.random() * 30) + 5,
+            covid: Math.floor(Math.random() * 100) + 20
+        }));
+    };
+
+    const generateHealthMetricsPieData = () => {
+        return [
+            { name: 'Excellent', value: 35, color: '#10B981' },
+            { name: 'Good', value: 45, color: '#3B82F6' },
+            { name: 'Fair', value: 15, color: '#F59E0B' },
+            { name: 'Poor', value: 5, color: '#EF4444' }
+        ];
+    };
+
+    const formatTimestamp = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        try {
+            return format(new Date(timestamp), 'MMM dd, yyyy HH:mm');
+        } catch (error) {
+            return 'Invalid date';
+        }
+    };
+
+    const formatTimeAgo = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        try {
+            return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+        } catch (error) {
+            return 'Invalid date';
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50">
+            {/* Header */}
+            <header className="bg-white shadow-sm border-b border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between items-center py-4">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                                <svg className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                            </div>
+                            <div className="ml-3">
+                                <h1 className="text-xl font-semibold text-gray-900">ProxiHealth</h1>
+                                <p className="text-sm text-gray-500">Welcome back, {user?.name}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <div className="text-right">
+                                <div className="text-sm text-gray-500 font-mono">
+                                    {format(currentTime, 'HH:mm:ss')}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {format(currentTime, 'MMM dd, yyyy')}
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="text-gray-500 hover:text-gray-700 text-sm font-medium"
+                            >
+                                Sign out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            {/* Navigation Tabs */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="border-b border-gray-200">
+                    <nav className="-mb-px flex space-x-8">
+                        {[
+                            { id: 'overview', name: 'Overview', icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z' },
+                            { id: 'outbreaks', name: 'Disease Outbreaks', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z' },
+                            { id: 'predictions', name: 'Health Predictions', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+                            { id: 'profile', name: 'Profile', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' }
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                                    activeTab === tab.id
+                                        ? 'border-indigo-500 text-indigo-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
+                                </svg>
+                                <span>{tab.name}</span>
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            </div>
+
+            {/* Message Display */}
+            {message.text && (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+                    <div className={`rounded-md p-4 ${
+                        message.type === 'error' ? 'bg-red-50 border border-red-200' :
+                        message.type === 'success' ? 'bg-green-50 border border-green-200' :
+                        message.type === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
+                        'bg-blue-50 border border-blue-200'
+                    }`}>
+                        <div className="flex">
+                            <div className="flex-shrink-0">
+                                {message.type === 'error' && (
+                                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {message.type === 'success' && (
+                                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {message.type === 'warning' && (
+                                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {message.type === 'info' && (
+                                    <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div className="ml-3">
+                                <p className={`text-sm ${
+                                    message.type === 'error' ? 'text-red-700' :
+                                    message.type === 'success' ? 'text-green-700' :
+                                    message.type === 'warning' ? 'text-yellow-700' :
+                                    'text-blue-700'
+                                }`}>
+                                    {message.text}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Content */}
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* Overview Tab */}
+                {activeTab === 'overview' && (
+                    <div className="space-y-6">
+                        {/* Quick Actions */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <button
+                                    onClick={handleGetLocation}
+                                    className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                                >
+                                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    Get Location
+                                </button>
+                                
+                                {!googleFitConnection.connected ? (
+                                    <button
+                                        onClick={handleConnectGoogleFit}
+                                        className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                                    >
+                                        <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                        Connect Google Fit
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleSyncGoogleFit}
+                                        disabled={isLoading}
+                                        className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                                    >
+                                        <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Sync Data
+                                    </button>
+                                )}
+                                
+                                <button
+                                    onClick={handleGeneratePredictions}
+                                    disabled={isLoading || !googleFitConnection.connected}
+                                    className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
+                                >
+                                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    Generate Predictions
+                                </button>
+                                
+                                <button
+                                    onClick={fetchDiseaseOutbreaks}
+                                    className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700"
+                                >
+                                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Refresh Outbreaks
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Current Status */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Location Status */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-medium text-gray-900 mb-4">Location Status</h3>
+                                {currentLocation ? (
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Latitude:</span> {currentLocation.latitude.toFixed(4)}
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Longitude:</span> {currentLocation.longitude.toFixed(4)}
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Accuracy:</span> ±{currentLocation.accuracy}m
+                                        </p>
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Last updated: {formatTimeAgo(currentLocation.timestamp)}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">Location not set</p>
+                                )}
+                            </div>
+
+                            {/* Google Fit Status */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-medium text-gray-900 mb-4">Google Fit Status</h3>
+                                {googleFitConnection.connected ? (
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-green-600 font-medium">Connected</p>
+                                        {googleFitConnection.googleEmail && (
+                                            <p className="text-sm text-gray-600">
+                                                {googleFitConnection.googleEmail}
+                                            </p>
+                                        )}
+                                        {googleFitData && (
+                                            <div className="mt-2">
+                                                <p className="text-sm text-gray-600">
+                                                    <span className="font-medium">Steps:</span> {googleFitData.steps}
+                                                </p>
+                                                <p className="text-sm text-gray-600">
+                                                    <span className="font-medium">Calories:</span> {googleFitData.calories}
+                                                </p>
+                                            </div>
+                                        )}
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Last sync: {formatTimeAgo(new Date())}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">Not connected</p>
+                                )}
+                            </div>
+
+                            {/* Health Score */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-medium text-gray-900 mb-4">Health Score</h3>
+                                {diseasePredictions?.overallHealthScore ? (
+                                    <div className="text-center">
+                                        <div className="text-3xl font-bold text-indigo-600">
+                                            {diseasePredictions.overallHealthScore}/100
+                                        </div>
+                                        <p className="text-sm text-gray-500 mt-1">Overall Health</p>
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Last calculated: {formatTimeAgo(new Date())}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No data available</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Visual Statistics */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Weekly Health Trends */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-medium text-gray-900 mb-4">Weekly Health Trends</h3>
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <LineChart data={generateWeeklyHealthData()}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="day" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        <Line type="monotone" dataKey="steps" stroke="#3B82F6" strokeWidth={2} name="Steps" />
+                                        <Line type="monotone" dataKey="heartRate" stroke="#EF4444" strokeWidth={2} name="Heart Rate" />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                                <p className="text-xs text-gray-500 mt-2 text-center">
+                                    Data updated: {formatTimestamp(new Date())}
+                                </p>
+                            </div>
+
+                            {/* Health Metrics Distribution */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-medium text-gray-900 mb-4">Health Metrics Distribution</h3>
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <PieChart>
+                                        <Pie
+                                            data={generateHealthMetricsPieData()}
+                                            cx="50%"
+                                            cy="50%"
+                                            labelLine={false}
+                                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                            outerRadius={80}
+                                            fill="#8884d8"
+                                            dataKey="value"
+                                        >
+                                            {generateHealthMetricsPieData().map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <p className="text-xs text-gray-500 mt-2 text-center">
+                                    Based on population data • Updated: {formatTimestamp(new Date())}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Disease Trends */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Disease Trends (Last 6 Months)</h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <AreaChart data={generateDiseaseTrendData()}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="month" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Legend />
+                                    <Area type="monotone" dataKey="dengue" stackId="1" stroke="#EF4444" fill="#FEE2E2" name="Dengue" />
+                                    <Area type="monotone" dataKey="malaria" stackId="1" stroke="#F59E0B" fill="#FEF3C7" name="Malaria" />
+                                    <Area type="monotone" dataKey="covid" stackId="1" stroke="#3B82F6" fill="#DBEAFE" name="COVID-19" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                            <p className="text-xs text-gray-500 mt-2 text-center">
+                                Data source: Health Department • Last updated: {formatTimestamp(new Date())}
+                            </p>
+                        </div>
+
+                        {/* Alerts Section */}
+                        {userAlerts.length > 0 && (
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-medium text-gray-900">Recent Alerts</h3>
+                                    <span className="text-xs text-gray-500">
+                                        {userAlerts.length} active alert{userAlerts.length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                <div className="space-y-3">
+                                    {userAlerts.slice(0, 3).map((alert, index) => (
+                                        <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                            <div className="flex items-center">
+                                                <div className="flex-shrink-0">
+                                                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                    </svg>
+                                                </div>
+                                                <div className="ml-3 flex-1">
+                                                    <h4 className="text-sm font-medium text-red-800">Health Alert</h4>
+                                                    <p className="text-sm text-red-700 mt-1">{alert.message}</p>
+                                                    <div className="mt-2 flex justify-between items-center">
+                                                        <p className="text-xs text-red-600">
+                                                            <span className="font-medium">Created:</span> {formatTimestamp(alert.created_at)}
+                                                        </p>
+                                                        <p className="text-xs text-red-500">
+                                                            {formatTimeAgo(alert.created_at)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Activity Feed */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h3>
+                            <div className="space-y-4">
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex-shrink-0">
+                                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-gray-900">Google Fit data synced successfully</p>
+                                        <p className="text-xs text-gray-500">{formatTimeAgo(new Date(Date.now() - 300000))}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex-shrink-0">
+                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-gray-900">Health predictions generated</p>
+                                        <p className="text-xs text-gray-500">{formatTimeAgo(new Date(Date.now() - 600000))}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex-shrink-0">
+                                        <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-gray-900">Location updated</p>
+                                        <p className="text-xs text-gray-500">{formatTimeAgo(new Date(Date.now() - 900000))}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-4 text-center">
+                                Activity feed updated: {formatTimestamp(new Date())}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Disease Outbreaks Tab */}
+                {activeTab === 'outbreaks' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">Disease Outbreaks in Kerala</h2>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Last updated: {formatTimestamp(new Date())} • Data refreshed {formatTimeAgo(new Date())}
+                                </p>
+                            </div>
+                            <button
+                                onClick={fetchDiseaseOutbreaks}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300"
+                            >
+                                Refresh Data
+                            </button>
+                        </div>
+
+                        {/* Outbreak Statistics */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="bg-white rounded-lg shadow p-4">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-red-600">
+                                        {diseaseOutbreaks.filter(o => o.severity === 'high').length}
+                                    </div>
+                                    <div className="text-sm text-gray-500">High Risk</div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-4">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-yellow-600">
+                                        {diseaseOutbreaks.filter(o => o.severity === 'medium').length}
+                                    </div>
+                                    <div className="text-sm text-gray-500">Medium Risk</div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-4">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-green-600">
+                                        {diseaseOutbreaks.filter(o => o.severity === 'low').length}
+                                    </div>
+                                    <div className="text-sm text-gray-500">Low Risk</div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-4">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-indigo-600">
+                                        {diseaseOutbreaks.length}
+                                    </div>
+                                    <div className="text-sm text-gray-500">Total Outbreaks</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Outbreak Severity Chart */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Outbreak Severity Distribution</h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={[
+                                    { severity: 'High Risk', count: diseaseOutbreaks.filter(o => o.severity === 'high').length, color: '#EF4444' },
+                                    { severity: 'Medium Risk', count: diseaseOutbreaks.filter(o => o.severity === 'medium').length, color: '#F59E0B' },
+                                    { severity: 'Low Risk', count: diseaseOutbreaks.filter(o => o.severity === 'low').length, color: '#10B981' }
+                                ]}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="severity" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Bar dataKey="count" fill="#3B82F6" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        {diseaseOutbreaks.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {diseaseOutbreaks.map((outbreak, index) => (
+                                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-900">{outbreak.disease_name}</h3>
+                                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                                                outbreak.severity === 'high' ? 'bg-red-100 text-red-800' :
+                                                outbreak.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-green-100 text-green-800'
+                                            }`}>
+                                                {outbreak.severity}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-gray-600">
+                                                <span className="font-medium">Location:</span> {outbreak.district}, {outbreak.location}
+                                            </p>
+                                            <p className="text-sm text-gray-600">
+                                                <span className="font-medium">Cases:</span> {outbreak.cases}
+                                            </p>
+                                            <p className="text-sm text-gray-600">
+                                                <span className="font-medium">Source:</span> {outbreak.source}
+                                            </p>
+                                            <div className="pt-2 border-t border-gray-100">
+                                                <p className="text-xs text-gray-500">
+                                                    <span className="font-medium">Updated:</span> {formatTimestamp(outbreak.last_updated)}
+                                                </p>
+                                                <p className="text-xs text-gray-400">
+                                                    {formatTimeAgo(outbreak.last_updated)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <p className="mt-2 text-gray-500">No disease outbreaks data available.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Health Predictions Tab */}
+                {activeTab === 'predictions' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">Health Predictions</h2>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    AI-powered health risk assessment • Last analysis: {diseasePredictions ? formatTimeAgo(new Date()) : 'Never'}
+                                </p>
+                            </div>
+                            <div className="space-x-2">
+                                <button
+                                    onClick={fetchDiseasePredictions}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300"
+                                >
+                                    Load Predictions
+                                </button>
+                                <button
+                                    onClick={handleGeneratePredictions}
+                                    disabled={isLoading || !googleFitConnection.connected}
+                                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 disabled:opacity-50"
+                                >
+                                    Generate New Predictions
+                                </button>
+                            </div>
+                        </div>
+
+                        {diseasePredictions ? (
+                            <div className="space-y-6">
+                                {/* Overall Health Score */}
+                                <div className="bg-white rounded-lg shadow p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Overall Health Score</h3>
+                                    <div className="text-center">
+                                        <div className="text-4xl font-bold text-indigo-600 mb-2">
+                                            {diseasePredictions.overallHealthScore}/100
+                                        </div>
+                                        <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
+                                            <div 
+                                                className="bg-indigo-600 h-4 rounded-full transition-all duration-500"
+                                                style={{ width: `${diseasePredictions.overallHealthScore}%` }}
+                                            ></div>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                            Score calculated: {formatTimestamp(new Date())}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Prediction Confidence Chart */}
+                                <div className="bg-white rounded-lg shadow p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Prediction Confidence Levels</h3>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <BarChart data={Object.entries(diseasePredictions.predictions || {}).map(([disease, prediction]) => ({
+                                            disease: disease.replace('_', ' '),
+                                            confidence: (prediction.probability * 100).toFixed(1),
+                                            risk: prediction.risk
+                                        }))}>
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis dataKey="disease" />
+                                            <YAxis />
+                                            <Tooltip />
+                                            <Bar dataKey="confidence" fill="#3B82F6" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                    <p className="text-xs text-gray-500 mt-2 text-center">
+                                        Confidence levels based on AI model analysis • Updated: {formatTimestamp(new Date())}
+                                    </p>
+                                </div>
+
+                                {/* Health Metrics */}
+                                {diseasePredictions.healthMetrics && (
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <h3 className="text-lg font-medium text-gray-900 mb-4">Health Metrics</h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div className="text-center">
+                                                <div className="text-2xl font-bold text-gray-900">
+                                                    {Math.round(diseasePredictions.healthMetrics.dailySteps)}
+                                                </div>
+                                                <div className="text-sm text-gray-500">Daily Steps</div>
+                                            </div>
+                                            <div className="text-center">
+                                                <div className="text-2xl font-bold text-gray-900">
+                                                    {Math.round(diseasePredictions.healthMetrics.avgHeartRate)} bpm
+                                                </div>
+                                                <div className="text-sm text-gray-500">Avg Heart Rate</div>
+                                            </div>
+                                            <div className="text-center">
+                                                <div className="text-2xl font-bold text-gray-900 capitalize">
+                                                    {diseasePredictions.healthMetrics.activityLevel.replace('_', ' ')}
+                                                </div>
+                                                <div className="text-sm text-gray-500">Activity Level</div>
+                                            </div>
+                                            <div className="text-center">
+                                                <div className="text-2xl font-bold text-gray-900 capitalize">
+                                                    {diseasePredictions.healthMetrics.cardiovascularHealth}
+                                                </div>
+                                                <div className="text-sm text-gray-500">Cardiovascular Health</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Disease Predictions */}
+                                {diseasePredictions.predictions && (
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <h3 className="text-lg font-medium text-gray-900 mb-4">Disease Risk Predictions</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {Object.entries(diseasePredictions.predictions).map(([disease, prediction]) => (
+                                                <div key={disease} className="border border-gray-200 rounded-lg p-4">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h4 className="font-medium text-gray-900 capitalize">
+                                                            {disease.replace('_', ' ')}
+                                                        </h4>
+                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                                            prediction.risk === 'high' ? 'bg-red-100 text-red-800' :
+                                                            prediction.risk === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                                            'bg-green-100 text-green-800'
+                                                        }`}>
+                                                            {prediction.risk} risk
+                                                        </span>
+                                                    </div>
+                                                    <div className="mb-2">
+                                                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                                            <span>Probability</span>
+                                                            <span>{(prediction.probability * 100).toFixed(1)}%</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div 
+                                                                className={`h-2 rounded-full transition-all duration-500 ${
+                                                                    prediction.risk === 'high' ? 'bg-red-500' :
+                                                                    prediction.risk === 'medium' ? 'bg-yellow-500' :
+                                                                    'bg-green-500'
+                                                                }`}
+                                                                style={{ width: `${prediction.probability * 100}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                    {prediction.factors && prediction.factors.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs text-gray-500 mb-1">Risk Factors:</p>
+                                                            <ul className="text-xs text-gray-600 space-y-1">
+                                                                {prediction.factors.map((factor, index) => (
+                                                                    <li key={index}>• {factor.description}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Recommendations */}
+                                {diseasePredictions.recommendations && diseasePredictions.recommendations.length > 0 && (
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <h3 className="text-lg font-medium text-gray-900 mb-4">Health Recommendations</h3>
+                                        <div className="space-y-4">
+                                            {diseasePredictions.recommendations.map((rec, index) => (
+                                                <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                                    <div className="flex items-start">
+                                                        <div className="flex-shrink-0">
+                                                            <svg className="h-5 w-5 text-blue-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="ml-3 flex-1">
+                                                            <h4 className="text-sm font-medium text-blue-800">{rec.title}</h4>
+                                                            <p className="text-sm text-blue-700 mt-1">{rec.description}</p>
+                                                            <div className="mt-2">
+                                                                <p className="text-xs text-blue-600 font-medium">Timeline: {rec.timeline}</p>
+                                                                <ul className="text-sm text-blue-600 mt-2 space-y-1">
+                                                                    {rec.actions.map((action, actionIndex) => (
+                                                                        <li key={actionIndex}>• {action}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                <p className="mt-2 text-gray-500">No predictions available. Connect Google Fit and generate predictions to see your health insights.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Profile Tab */}
+                {activeTab === 'profile' && (
+                    <div className="space-y-6">
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold text-gray-900">Profile Information</h2>
+                                <div className="text-right">
+                                    <div className="text-sm text-gray-500">
+                                        Member since: {formatTimestamp(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))}
+                                    </div>
+                                    <div className="text-xs text-gray-400">
+                                        Last login: {formatTimeAgo(new Date(Date.now() - 2 * 60 * 60 * 1000))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                                    <p className="mt-1 text-sm text-gray-900">{user?.name}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                                    <p className="mt-1 text-sm text-gray-900">{user?.email}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Age</label>
+                                    <p className="mt-1 text-sm text-gray-900">{user?.age || 'Not specified'}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Gender</label>
+                                    <p className="mt-1 text-sm text-gray-900 capitalize">{user?.gender || 'Not specified'}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Weight</label>
+                                    <p className="mt-1 text-sm text-gray-900">{user?.weight ? `${user.weight} kg` : 'Not specified'}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Height</label>
+                                    <p className="mt-1 text-sm text-gray-900">{user?.height ? `${user.height} cm` : 'Not specified'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Account Statistics */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Account Statistics</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-blue-600">30</div>
+                                    <div className="text-sm text-gray-600">Days Active</div>
+                                </div>
+                                <div className="text-center p-4 bg-green-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-green-600">15</div>
+                                    <div className="text-sm text-gray-600">Health Checks</div>
+                                </div>
+                                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-purple-600">8</div>
+                                    <div className="text-sm text-gray-600">Alerts Received</div>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-4 text-center">
+                                Statistics updated: {formatTimestamp(new Date())}
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </main>
+        </div>
+    );
+};
+
+export default Dashboard; 

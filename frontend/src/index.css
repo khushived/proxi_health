@@ -1,0 +1,28 @@
+/* your-health-app-frontend/src/index.css */
+
+/* Import Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Optional: Add any global custom CSS variables or styles here.
+  For this project, Tailwind handles most styling, but you might
+  add custom fonts or very specific resets if needed.
+*/
+
+/* Example: Setting a default font for the entire application */
+body {
+  font-family: 'Inter', sans-serif; /* Using Inter, as per previous instructions */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Ensure root element also uses the font */
+#root {
+  height: 100%;
+  width: 100%;
+}
