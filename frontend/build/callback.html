@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Fit Authorization</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        .error {
+            color: #e53e3e;
+        }
+        .success {
+            color: #38a169;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>Processing Authorization</h1>
+        <p id="message">Please wait while we complete your Google Fit authorization...</p>
+    </div>
+
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        const error = urlParams.get('error');
+
+        const messageElement = document.getElementById('message');
+
+        if (error) {
+            messageElement.textContent = `Authorization failed: ${error}`;
+            messageElement.className = 'error';
+            document.querySelector('.spinner').style.display = 'none';
+        } else if (code && state) {
+            // Send message to parent window
+            try {
+                window.opener.postMessage({
+                    type: 'GOOGLE_FIT_CALLBACK',
+                    code: code,
+                    state: state
+                }, window.location.origin);
+                
+                messageElement.textContent = 'Authorization successful! You can close this window.';
+                messageElement.className = 'success';
+                
+                // Close window after 2 seconds
+                setTimeout(() => {
+                    window.close();
+                }, 2000);
+            } catch (err) {
+                messageElement.textContent = 'Error processing authorization. Please try again.';
+                messageElement.className = 'error';
+                document.querySelector('.spinner').style.display = 'none';
+            }
+        } else {
+            messageElement.textContent = 'Invalid authorization response. Please try again.';
+            messageElement.className = 'error';
+            document.querySelector('.spinner').style.display = 'none';
+        }
+    </script>
+</body>
+</html> 

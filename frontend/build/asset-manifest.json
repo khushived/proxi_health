@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/proxihealth/static/css/main.21e89ee4.css",
+    "main.js": "/proxihealth/static/js/main.0dc54999.js",
+    "static/js/453.e2905460.chunk.js": "/proxihealth/static/js/453.e2905460.chunk.js",
+    "index.html": "/proxihealth/index.html",
+    "main.21e89ee4.css.map": "/proxihealth/static/css/main.21e89ee4.css.map",
+    "main.0dc54999.js.map": "/proxihealth/static/js/main.0dc54999.js.map",
+    "453.e2905460.chunk.js.map": "/proxihealth/static/js/453.e2905460.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.21e89ee4.css",
+    "static/js/main.0dc54999.js"
+  ]
+}

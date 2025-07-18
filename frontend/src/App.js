@@ -4,14 +4,13 @@ import './index.css';
 import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
+import { API_BASE_URL } from './config';
 
 function App() {
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [showLogin, setShowLogin] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
-
-    const API_BASE_URL = 'http://localhost:3001/api';
 
     // Check if user is already logged in
     useEffect(() => {

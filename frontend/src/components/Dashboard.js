@@ -14,7 +14,7 @@ const Dashboard = ({ user, onLogout }) => {
     const [message, setMessage] = useState({ text: '', type: '' });
     const [currentTime, setCurrentTime] = useState(new Date());
 
-    const API_BASE_URL = 'http://localhost:3001/api';
+    // API_BASE_URL is now imported from config.js
 
     // Show message function
     const showMessage = (text, type = 'info') => {
