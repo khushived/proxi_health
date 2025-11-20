@@ -5,8 +5,7 @@
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "build",
-        "buildCommand": "node ./frontend/node_modules/react-scripts/scripts/build.js"
+        "distDir": "frontend/build"
       }
     }
   ],
@@ -20,4 +19,4 @@
       "dest": "/frontend/$1"
     }
   ]
-} 
+}
