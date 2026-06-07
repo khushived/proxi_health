@@ -11,8 +11,36 @@
   ],
   "routes": [
     {
+      "src": "/static/(.*)",
+      "dest": "/frontend/static/$1"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/frontend/manifest.json"
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "/frontend/favicon.ico"
+    },
+    {
+      "src": "/logo192.png",
+      "dest": "/frontend/logo192.png"
+    },
+    {
+      "src": "/logo512.png",
+      "dest": "/frontend/logo512.png"
+    },
+    {
+      "src": "/asset-manifest.json",
+      "dest": "/frontend/asset-manifest.json"
+    },
+    {
+      "src": "/ml_metrics.json",
+      "dest": "/frontend/ml_metrics.json"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/frontend/index.html"
     }
   ]
 }
