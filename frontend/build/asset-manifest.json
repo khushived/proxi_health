@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/proxihealth/static/css/main.8ec8cf57.css",
-    "main.js": "/proxihealth/static/js/main.d4d93da0.js",
-    "static/js/453.e2905460.chunk.js": "/proxihealth/static/js/453.e2905460.chunk.js",
-    "index.html": "/proxihealth/index.html",
-    "main.8ec8cf57.css.map": "/proxihealth/static/css/main.8ec8cf57.css.map",
-    "main.d4d93da0.js.map": "/proxihealth/static/js/main.d4d93da0.js.map",
-    "453.e2905460.chunk.js.map": "/proxihealth/static/js/453.e2905460.chunk.js.map"
+    "main.css": "./static/css/main.8ec8cf57.css",
+    "main.js": "./static/js/main.914c7ccb.js",
+    "static/js/453.e2905460.chunk.js": "./static/js/453.e2905460.chunk.js",
+    "index.html": "./index.html",
+    "main.8ec8cf57.css.map": "./static/css/main.8ec8cf57.css.map",
+    "main.914c7ccb.js.map": "./static/js/main.914c7ccb.js.map",
+    "453.e2905460.chunk.js.map": "./static/js/453.e2905460.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.8ec8cf57.css",
-    "static/js/main.d4d93da0.js"
+    "static/js/main.914c7ccb.js"
   ]
 }
