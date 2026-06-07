@@ -1,9 +1,12 @@
 {
-  "accuracy_mean": 0.9999,
-  "accuracy_std": 0.00019999999999997797,
-  "f1_mean": 0.9999197753710389,
-  "f1_std": 0.00016044925792217947,
-  "cv_folds": 5,
-  "n_samples": 10000,
-  "timestamp": "2025-11-06T03:46:50.936755"
+    "accuracy_mean": 0.337,
+    "f1_mean": 0.33651385638562853,
+    "cv_folds": 3,
+    "n_samples": 10000,
+    "timestamp": "2026-06-05T22:16:38.569395",
+    "classes": [
+        "Diabetes",
+        "Hypertension",
+        "None"
+    ]
 }

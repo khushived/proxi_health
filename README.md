@@ -29,6 +29,8 @@ A comprehensive health monitoring application that tracks disease outbreaks in K
 ### 🔔 Smart Alerts & Dashboard
 - **Proximity-based Notifications**: Alerts users within 50km of disease outbreaks
 - **Real-time Updates**: Continuous monitoring with automatic alert generation
+- **Risk Segmentation**: Classifies users into low, moderate, high, and critical risk groups
+- **Expert Monitoring Integration**: Automatically opens expert monitoring cases for high/critical users
 - **Modern UI**: Beautiful, responsive dashboard with tabbed navigation
 - **Profile Management**: User profile with health metrics and preferences
 
@@ -98,6 +100,9 @@ NEWS_API_KEY=your_news_api_key
 
 # Server Configuration
 PORT=3001
+
+# Comma-separated frontend origins for CORS
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ### 4. Database Setup
@@ -171,6 +176,10 @@ The application will be available at:
 - `POST /api/disease-prediction` - Generate new predictions
 - `GET /api/disease-prediction` - Get existing predictions
 
+### Risk Segmentation & Expert Monitoring (Protected)
+- `GET /api/risk-segmentation` - Get latest user risk segment details
+- `GET /api/expert-monitoring` - Get expert monitoring case status
+
 ## Database Schema
 
 ### Core Tables
@@ -181,6 +190,8 @@ The application will be available at:
 - `google_fit_data` - Google Fit health metrics
 - `user_tokens` - OAuth tokens for API access
 - `disease_predictions` - ML-generated health predictions
+- `user_segments` - Risk segmentation output per user
+- `expert_monitoring_cases` - Escalation cases for expert review
 
 ## Features in Detail
 

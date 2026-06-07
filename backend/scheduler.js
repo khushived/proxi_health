@@ -1,12 +1,12 @@
-// Scheduler for running disease scraping every 5 hours
+// Scheduler for running disease scraping every 12 hours
 const cron = require('node-cron');
 const { runDiseaseScraping } = require('./disease_scraper');
 require('dotenv').config();
 
-// Schedule disease scraping to run every 5 hours (configurable)
+// Schedule disease scraping to run every 12 hours (configurable)
 const scheduleDiseaseScraping = () => {
-    // Use environment variable or default to every 5 hours
-    const cronSchedule = process.env.SCRAPE_CRON_SCHEDULE || '0 */5 * * *';
+    // Use environment variable or default to every 12 hours
+    const cronSchedule = process.env.SCRAPE_CRON_SCHEDULE || '0 */12 * * *';
     cron.schedule(cronSchedule, async () => {
         console.log('Scheduled disease scraping started at:', new Date().toISOString());
         try {

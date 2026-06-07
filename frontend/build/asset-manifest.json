@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/proxihealth/static/css/main.443607ae.css",
-    "main.js": "/proxihealth/static/js/main.548b8bce.js",
+    "main.css": "/proxihealth/static/css/main.8ec8cf57.css",
+    "main.js": "/proxihealth/static/js/main.d4d93da0.js",
     "static/js/453.e2905460.chunk.js": "/proxihealth/static/js/453.e2905460.chunk.js",
     "index.html": "/proxihealth/index.html",
-    "main.443607ae.css.map": "/proxihealth/static/css/main.443607ae.css.map",
-    "main.548b8bce.js.map": "/proxihealth/static/js/main.548b8bce.js.map",
+    "main.8ec8cf57.css.map": "/proxihealth/static/css/main.8ec8cf57.css.map",
+    "main.d4d93da0.js.map": "/proxihealth/static/js/main.d4d93da0.js.map",
     "453.e2905460.chunk.js.map": "/proxihealth/static/js/453.e2905460.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.443607ae.css",
-    "static/js/main.548b8bce.js"
+    "static/css/main.8ec8cf57.css",
+    "static/js/main.d4d93da0.js"
   ]
 }

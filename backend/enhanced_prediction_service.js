@@ -1,5 +1,6 @@
-// Enhanced Disease Prediction Service with Advanced ML Models
-const { createClient } = require('@supabase/supabase-js');
+const { fetchUserHealthData } = require('./google_health_service');
+const { createClient } = require('./supabase_wrapper');
+const { checkLocationAlerts } = require('./disease_scraper');
 require('dotenv').config();
 
 // Supabase Configuration
@@ -153,22 +154,33 @@ class HealthRiskAssessment {
 
     // Get factor description
     getFactorDescription(factor, value, risk) {
-        const descriptions = {
-            age: `Age ${value} years`,
-            heartRate: `Heart rate ${value} bpm`,
-            bmi: `BMI ${value}`,
-            activityLevel: `${value.replace('_', ' ')} lifestyle`,
-            calories: `${value} daily calories`,
-            gender: value === 'male' ? 'Male gender' : 'Female gender'
-        };
-        return descriptions[factor] || `${factor}: ${value}`;
+        switch (factor) {
+            case 'age':
+                return `Age ${value} years`;
+            case 'heartRate':
+                return `Heart rate ${value} bpm`;
+            case 'bmi':
+                return `BMI ${value}`;
+            case 'activityLevel':
+                return `${typeof value === 'string' ? value.replace('_', ' ') : value} lifestyle`;
+            case 'calories':
+                return `${value} daily calories`;
+            case 'gender':
+                return value === 'male' ? 'Male gender' : 'Female gender';
+            default:
+                return `${factor}: ${value}`;
+        }
     }
 
     // Calculate comprehensive health metrics
     calculateHealthMetrics(fitData, userInfo) {
-        const avgHeartRate = fitData.heart_rate_data && fitData.heart_rate_data.length > 0
-            ? fitData.heart_rate_data.reduce((sum, hr) => sum + hr.value, 0) / fitData.heart_rate_data.length
-            : 70;
+        const isManual = fitData.is_manual === true;
+
+        const avgHeartRate = isManual
+            ? (fitData.heartRate || 70)
+            : (fitData.heart_rate_data && fitData.heart_rate_data.length > 0
+                ? fitData.heart_rate_data.reduce((sum, hr) => sum + hr.value, 0) / fitData.heart_rate_data.length
+                : 70);
 
         const dailySteps = fitData.steps / 7;
         const dailyCalories = fitData.calories / 7;
@@ -182,13 +194,19 @@ class HealthRiskAssessment {
         }
 
         // Determine activity level
-        const activityLevel = this.determineActivityLevel(dailySteps, dailyCalories);
+        const activityLevel = isManual
+            ? (fitData.activityLevel || 'lightly_active')
+            : this.determineActivityLevel(dailySteps, dailyCalories);
 
         // Calculate stress level based on heart rate variability
-        const stressLevel = this.calculateStressLevel(fitData.heart_rate_data);
+        const stressLevel = isManual
+            ? (fitData.stressLevel || 'medium')
+            : this.calculateStressLevel(fitData.heart_rate_data);
 
         // Estimate sleep quality based on activity patterns
-        const sleepQuality = this.estimateSleepQuality(fitData);
+        const sleepQuality = isManual
+            ? (fitData.sleepQuality || 'good')
+            : this.estimateSleepQuality(fitData);
 
         return {
             age: userInfo?.age || 30,
@@ -202,9 +220,9 @@ class HealthRiskAssessment {
             stressLevel: stressLevel,
             sleepQuality: sleepQuality,
             socialActivity: 'medium', // Default value
-            familyHistory: 'unknown', // Default value
+            familyHistory: isManual && fitData.familyHistory ? fitData.familyHistory : 'unknown', // Map family history
             environmentalFactors: 'urban', // Default value
-            smokingHistory: 'no' // Default value
+            smokingHistory: userInfo?.smoker === true || userInfo?.smoker === 'yes' ? 'yes' : 'no' // Map smoking history
         };
     }
 
@@ -348,24 +366,170 @@ class EnhancedPredictionService {
         this.riskAssessment = new HealthRiskAssessment();
     }
 
+    async getNearbyOutbreakCount(userId, radiusKm = 50) {
+        const { data: latestRecord, error: recordError } = await supabase
+            .from('health_records')
+            .select('location_data, created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (recordError || !latestRecord?.location_data?.latitude || !latestRecord?.location_data?.longitude) {
+            return { count: 0, outbreaks: [] };
+        }
+
+        const nearby = await checkLocationAlerts(
+            latestRecord.location_data.latitude,
+            latestRecord.location_data.longitude,
+            radiusKm
+        );
+
+        return { count: nearby.length, outbreaks: nearby };
+    }
+
+    deriveRiskSegment(predictions, overallHealthScore, nearbyOutbreakCount) {
+        const highRisks = Object.values(predictions || {}).filter((prediction) => prediction.risk === 'high').length;
+        const mediumRisks = Object.values(predictions || {}).filter((prediction) => prediction.risk === 'medium').length;
+
+        let segment = 'low_risk';
+        const reasons = [];
+
+        if (overallHealthScore < 40 || highRisks >= 3) {
+            segment = 'critical_risk';
+            reasons.push('Very low health score or multiple high-risk disease signals');
+        } else if (overallHealthScore < 60 || highRisks >= 2 || (highRisks >= 1 && nearbyOutbreakCount > 0)) {
+            segment = 'high_risk';
+            reasons.push('Elevated disease risk and/or local outbreak exposure');
+        } else if (overallHealthScore < 80 || mediumRisks >= 2 || nearbyOutbreakCount > 0) {
+            segment = 'moderate_risk';
+            reasons.push('Moderate health indicators requiring closer tracking');
+        } else {
+            reasons.push('Stable health profile with low immediate risk');
+        }
+
+        if (nearbyOutbreakCount > 0) {
+            reasons.push(`${nearbyOutbreakCount} nearby outbreak(s) detected in the last 24 hours`);
+        }
+
+        return {
+            segment,
+            highRisks,
+            mediumRisks,
+            nearbyOutbreakCount,
+            overallHealthScore,
+            reasons
+        };
+    }
+
+    async storeRiskSegment(userId, segmentData) {
+        const { data, error } = await supabase
+            .from('user_segments')
+            .upsert({
+                user_id: userId,
+                segment: segmentData.segment,
+                segment_details: segmentData,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            })
+            .select()
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error storing user segment:', error);
+            return null;
+        }
+
+        return data;
+    }
+
+    async upsertExpertMonitoringCase(userId, segmentData, predictions, nearbyOutbreaks) {
+        const needsMonitoring = segmentData.segment === 'high_risk' || segmentData.segment === 'critical_risk';
+
+        if (!needsMonitoring) {
+            return {
+                required: false,
+                caseId: null,
+                status: 'not_required'
+            };
+        }
+
+        const escalationLevel = segmentData.segment === 'critical_risk' ? 'urgent' : 'priority';
+        const summary = `Auto-escalated for ${segmentData.segment} with ${segmentData.highRisks} high-risk disease signal(s)`;
+
+        const payload = {
+            user_id: userId,
+            status: 'open',
+            escalation_level: escalationLevel,
+            summary,
+            case_context: {
+                segment: segmentData,
+                nearbyOutbreaks: nearbyOutbreaks || [],
+                topRisks: Object.entries(predictions)
+                    .filter(([, value]) => value.risk === 'high' || value.risk === 'medium')
+                    .map(([disease, value]) => ({ disease, risk: value.risk, probability: value.probability }))
+            },
+            updated_at: new Date().toISOString()
+        };
+
+        const { data, error } = await supabase
+            .from('expert_monitoring_cases')
+            .upsert(payload, { onConflict: 'user_id' })
+            .select()
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error upserting expert monitoring case:', error);
+            return {
+                required: true,
+                caseId: null,
+                status: 'error'
+            };
+        }
+
+        return {
+            required: true,
+            caseId: data?.id || null,
+            status: data?.status || 'open',
+            escalationLevel
+        };
+    }
+
     // Generate comprehensive health predictions
     async generatePredictions(userId) {
         try {
-            // Get user's Google Fit data
-            const { data: fitData, error: fitError } = await supabase
-                .from('google_fit_data')
-                .select('*')
-                .eq('user_id', userId)
-                .single();
+            // Get user's health data via Google Health service (or manual entry)
+            const healthData = await fetchUserHealthData(userId);
 
-            if (fitError || !fitData) {
-                throw new Error('No Google Fit data available for prediction');
-            }
+            // Map manual health data fields
+            const calorieBurnMap = { sedentary: 1800, lightly_active: 2100, active: 2500, very_active: 2800 };
+            const dailyCalories = calorieBurnMap[healthData.physicalActivityLevel] || 2100;
 
-            // Get user profile
+            const sleepQuality = healthData.sleepHours >= 7 && healthData.wakeupsPerNight <= 1 
+                ? 'good' 
+                : healthData.sleepHours >= 5 
+                    ? 'fair' 
+                    : 'poor';
+
+            // Map to expected fitData shape for existing risk assessment logic
+            const fitData = {
+                is_manual: true,
+                steps: (healthData.steps || 0) * 7, // Scale to weekly sum to align with division inside calculateHealthMetrics
+                calories: dailyCalories * 7, // Scale to weekly sum to align with division
+                heartRate: healthData.heartRate || 72,
+                distance: (healthData.steps || 0) * 0.00075 * 7, // Scale to weekly sum
+                activityLevel: healthData.physicalActivityLevel || 'lightly_active',
+                stressLevel: healthData.stressLevel || 'medium',
+                sleepQuality: sleepQuality,
+                familyHistory: healthData.familyHistory && healthData.familyHistory.length > 0 ? 'yes' : 'no',
+                last_sync: new Date().toISOString()
+            };
+
+            // Get user profile (include smoker/alcohol details for risk calculation)
             const { data: userInfo, error: userError } = await supabase
                 .from('users')
-                .select('age, gender, weight, height')
+                .select('age, gender, weight, height, smoker, alcohol_consumption')
                 .eq('id', userId)
                 .single();
 
@@ -373,7 +537,7 @@ class EnhancedPredictionService {
                 console.error('Error fetching user info:', userError);
             }
 
-            // Calculate health metrics
+            // Calculate health metrics using the adapted fitData
             const healthMetrics = this.riskAssessment.calculateHealthMetrics(fitData, userInfo);
 
             // Generate predictions for all diseases
@@ -390,14 +554,40 @@ class EnhancedPredictionService {
             // Calculate overall health score
             const overallHealthScore = this.calculateOverallHealthScore(predictions, healthMetrics);
 
+            // Segment user risk by combining prediction profile and local outbreak exposure
+            const nearbyOutbreakInfo = await this.getNearbyOutbreakCount(userId);
+            const riskSegmentData = this.deriveRiskSegment(
+                predictions,
+                overallHealthScore,
+                nearbyOutbreakInfo.count
+            );
+
+            const storedSegment = await this.storeRiskSegment(userId, riskSegmentData);
+            const expertMonitoring = await this.upsertExpertMonitoringCase(
+                userId,
+                riskSegmentData,
+                predictions,
+                nearbyOutbreakInfo.outbreaks
+            );
+
             // Store predictions
-            await this.storePredictions(userId, predictions, healthMetrics, overallHealthScore);
+            await this.storePredictions(
+                userId,
+                predictions,
+                healthMetrics,
+                overallHealthScore,
+                recommendations,
+                riskSegmentData,
+                expertMonitoring
+            );
 
             return {
                 predictions,
                 healthMetrics,
                 recommendations,
                 overallHealthScore,
+                riskSegment: storedSegment || riskSegmentData,
+                expertMonitoring,
                 lastUpdated: new Date().toISOString()
             };
 
@@ -454,7 +644,7 @@ class EnhancedPredictionService {
     }
 
     // Store predictions in database
-    async storePredictions(userId, predictions, healthMetrics, overallHealthScore) {
+    async storePredictions(userId, predictions, healthMetrics, overallHealthScore, recommendations, riskSegmentData, expertMonitoring) {
         try {
             const { error } = await supabase
                 .from('disease_predictions')
@@ -463,6 +653,9 @@ class EnhancedPredictionService {
                     predictions: predictions,
                     health_metrics: healthMetrics,
                     overall_health_score: overallHealthScore,
+                    recommendations: recommendations,
+                    risk_segment: riskSegmentData,
+                    expert_monitoring: expertMonitoring,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }, {
@@ -495,7 +688,19 @@ class EnhancedPredictionService {
                 return null;
             }
 
-            return data;
+            if (!data) {
+                return null;
+            }
+
+            return {
+                predictions: data.predictions,
+                healthMetrics: data.health_metrics,
+                recommendations: data.recommendations || [],
+                overallHealthScore: data.overall_health_score,
+                riskSegment: data.risk_segment || null,
+                expertMonitoring: data.expert_monitoring || null,
+                lastUpdated: data.updated_at
+            };
         } catch (error) {
             console.error('Error in getUserPredictions:', error);
             return null;
