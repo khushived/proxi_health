@@ -4,7 +4,7 @@ const config = {
     API_BASE_URL: 'http://localhost:3001/api'
   },
   production: {
-    API_BASE_URL: process.env.REACT_APP_API_BASE_URL || 'https://your-backend-url.com/api'
+    API_BASE_URL: process.env.REACT_APP_API_BASE_URL || '/api'
   }
 };
 

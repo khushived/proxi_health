@@ -991,13 +991,17 @@ app.get('/api/expert-monitoring', authenticateToken, async (req, res) => {
 });
 
 // Start the server
-app.listen(PORT, () => {
-    console.log(`Node.js backend running on http://localhost:${PORT}`);
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-        console.warn("WARNING: Supabase URL or Service Role Key is not set. Please configure your .env file.");
-    }
-    
-    // Start disease scraping scheduler
-    runInitialScraping();
-    scheduleDiseaseScraping();
-});
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`Node.js backend running on http://localhost:${PORT}`);
+        if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+            console.warn("WARNING: Supabase URL or Service Role Key is not set. Please configure your .env file.");
+        }
+        
+        // Start disease scraping scheduler
+        runInitialScraping();
+        scheduleDiseaseScraping();
+    });
+}
+
+module.exports = app;
