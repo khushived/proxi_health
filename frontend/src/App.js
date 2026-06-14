@@ -42,8 +42,15 @@ function App() {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Registration failed');
+                let errorMessage = 'Registration failed';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (jsonError) {
+                    const textError = await response.text().catch(() => '');
+                    errorMessage = textError || `Server error (status ${response.status})`;
+                }
+                throw new Error(errorMessage);
             }
 
             const result = await response.json();
@@ -75,8 +82,15 @@ function App() {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Login failed');
+                let errorMessage = 'Login failed';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (jsonError) {
+                    const textError = await response.text().catch(() => '');
+                    errorMessage = textError || `Server error (status ${response.status})`;
+                }
+                throw new Error(errorMessage);
             }
 
             const result = await response.json();

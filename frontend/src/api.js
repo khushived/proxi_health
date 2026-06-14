@@ -17,8 +17,15 @@ export async function saveHealthData(data) {
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Failed to save health data');
+    let errorMessage = 'Failed to save health data';
+    try {
+      const err = await response.json();
+      errorMessage = err.error || errorMessage;
+    } catch (jsonError) {
+      const textError = await response.text().catch(() => '');
+      errorMessage = textError || `Server error (status ${response.status})`;
+    }
+    throw new Error(errorMessage);
   }
 
   return await response.json();
@@ -38,8 +45,15 @@ export async function fetchHealthData() {
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Failed to fetch health data');
+    let errorMessage = 'Failed to fetch health data';
+    try {
+      const err = await response.json();
+      errorMessage = err.error || errorMessage;
+    } catch (jsonError) {
+      const textError = await response.text().catch(() => '');
+      errorMessage = textError || `Server error (status ${response.status})`;
+    }
+    throw new Error(errorMessage);
   }
 
   return await response.json();

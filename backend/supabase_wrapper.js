@@ -1,5 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const localDb = require('./local_db');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 function isNetworkFetchFailure(error) {
     if (!error) return false;
@@ -220,13 +222,29 @@ class ProxyQueryBuilder {
 }
 
 function createClientWrapper(url, key, options) {
-    const realClient = createClient(url, key, options);
+    let realClient = null;
     const fallbackState = { useFallback: false };
 
+    if (!url || !key) {
+        console.warn('Supabase URL or Key is missing. Defaulting to offline local DB fallback.');
+        fallbackState.useFallback = true;
+    } else {
+        try {
+            realClient = createClient(url, key, options);
+        } catch (e) {
+            console.error('Failed to initialize Supabase client:', e);
+            fallbackState.useFallback = true;
+        }
+    }
+
     return {
-        auth: realClient.auth,
+        auth: realClient ? realClient.auth : {
+            signUp: async () => ({ data: { user: null }, error: new Error('Supabase Client not initialized') }),
+            signInWithPassword: async () => ({ data: { user: null }, error: new Error('Supabase Client not initialized') }),
+            signOut: async () => ({ error: null })
+        },
         from: (table) => {
-            if (fallbackState.useFallback) {
+            if (fallbackState.useFallback || !realClient) {
                 return new MockBuilder(table);
             }
             return ProxyQueryBuilder.create(table, realClient.from(table), [], fallbackState);
