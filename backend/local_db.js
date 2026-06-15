@@ -2,11 +2,17 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, 'local_data');
+// Use /tmp on Vercel/serverless environments, or fallback to relative local_data
+const isVercel = process.env.VERCEL || process.env.NOW_BUILDER;
+const DATA_DIR = isVercel ? path.join('/tmp', 'local_data') : path.join(__dirname, 'local_data');
 
 // Ensure database directory exists
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+    if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+} catch (e) {
+    console.warn(`Warning: Failed to create local database directory at ${DATA_DIR}:`, e);
 }
 
 function getFilePath(table) {
