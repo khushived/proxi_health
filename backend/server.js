@@ -604,6 +604,9 @@ app.get('/api/future-disease-risk', authenticateToken, async (req, res) => {
         });
     } catch (e) {
         console.error('Server error generating future risk:', e);
+        if (e.message && e.message.includes('User not found')) {
+            return res.status(404).json({ error: e.message });
+        }
         res.status(500).json({ error: e.message || 'Internal server error while generating future disease risk.' });
     }
 });
@@ -858,7 +861,7 @@ app.post('/api/patient/doctors/connect', authenticateToken, async (req, res) => 
             .maybeSingle();
 
         if (docError || !doctor) {
-            return res.status(404).json({ error: 'Doctor not found with this email.' });
+            return res.status(400).json({ error: 'Doctor not found with this email.' });
         }
 
         if (doctor.role !== 'doctor') {
@@ -932,7 +935,7 @@ app.get('/api/disease-prediction', authenticateToken, async (req, res) => {
         const predictions = await predictionService.getUserPredictions(req.user.userId);
         
         if (!predictions) {
-            return res.status(404).json({ error: 'No predictions found for this user.' });
+            return res.status(200).json({ predictions: null, message: 'No predictions found for this user.' });
         }
         
         res.status(200).json(normalizePredictionPayload(predictions));
@@ -959,7 +962,7 @@ app.get('/api/risk-segmentation', authenticateToken, async (req, res) => {
         }
 
         if (!data) {
-            return res.status(404).json({ error: 'No risk segmentation found for this user.' });
+            return res.status(200).json({ segment: null, message: 'No risk segmentation found for this user.' });
         }
 
         res.status(200).json(data);
