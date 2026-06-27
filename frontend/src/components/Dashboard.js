@@ -19,7 +19,7 @@ const Dashboard = ({ user, onLogout }) => {
     const [prescriptions, setPrescriptions] = useState([]);
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [newPrescription, setNewPrescription] = useState({ medicineName: '', dosage: '', frequency: '', durationDays: '', instructions: '' });
-    const [modelMetrics, setModelMetrics] = useState(null);
+
     const [healthAssessmentStatus, setHealthAssessmentStatus] = useState({ connected: false });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
@@ -55,20 +55,7 @@ const Dashboard = ({ user, onLogout }) => {
         };
     };
 
-    const fetchModelMetrics = async () => {
-        try {
-            const resp = await fetch(`${window.location.origin}/ml_metrics.json`);
-            if (resp.ok) {
-                const text = await resp.text();
-                // Guard: only parse if it looks like JSON (not the HTML fallback page)
-                if (text.trim().startsWith('{')) {
-                    setModelMetrics(JSON.parse(text));
-                }
-            }
-        } catch (err) {
-            // Silently ignore — model metrics are informational only
-        }
-    };
+
 
     // Load initial data based on role
     useEffect(() => {
@@ -82,8 +69,7 @@ const Dashboard = ({ user, onLogout }) => {
                     fetchFutureDiseaseRisk(),
                     fetchRiskSegmentation(),
                     fetchExpertMonitoringCases(),
-                    fetchPrescriptions(),
-                    fetchModelMetrics()
+                    fetchPrescriptions()
                 ]);
 
                 if (user?.role === 'doctor') {
@@ -611,7 +597,7 @@ const Dashboard = ({ user, onLogout }) => {
                         )}
 
                         {/* Status Overview Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             
                             {/* GPS Status */}
                             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all">
@@ -676,18 +662,6 @@ const Dashboard = ({ user, onLogout }) => {
                                 )}
                             </div>
 
-                            {/* Model Health Accuracy */}
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Model Accuracy</h3>
-                                {modelMetrics ? (
-                                    <div className="text-center text-xs">
-                                        <div className="text-2xl font-black text-emerald-400">{(modelMetrics.accuracy_mean * 100).toFixed(1)}%</div>
-                                        <p className="text-[10px] text-gray-400 mt-1">Cross-validated precision</p>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-gray-500 italic">No model stats fetched</p>
-                                )}
-                            </div>
 
                         </div>
 
